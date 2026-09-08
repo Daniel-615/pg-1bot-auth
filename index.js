@@ -79,6 +79,13 @@ class Server {
   }
 
   configureRoutes() {
+    this.app.get('/', (_req, res) => {
+      res.json({ message: 'Auth API funcionando' });
+    });
+
+    // Los navegadores solicitan este recurso automáticamente al abrir la URL base.
+    this.app.get('/favicon.ico', (_req, res) => res.status(204).end());
+
     new UsuarioRoutes(this.app);
     new RolRoutes(this.app);
     new PermisoRoutes(this.app);
