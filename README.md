@@ -26,6 +26,11 @@ PORT=
 #JWT CONFIGURATION
 SECRET_JWT_KEY=
 
+# Google OAuth
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_REDIRECT_URI=http://localhost:3001/auth-service/usuario/google/callback
+
 # Protección de tráfico
 TRUST_PROXY=false
 

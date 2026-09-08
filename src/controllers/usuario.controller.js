@@ -5,13 +5,112 @@ const Rol = db.getModel("Rol");
 const Op = db.Sequelize.Op;
 const jwt = require("jsonwebtoken");
 const { generarTokensYEnviar } = require("../middleware/sendTokens.js");
-const { SECRET_JWT_KEY, FRONTEND_URL } = require("../config/config.js");
+const {
+  SECRET_JWT_KEY,
+  FRONTEND_URL,
+  GOOGLE_CLIENT_ID,
+  GOOGLE_CLIENT_SECRET,
+  GOOGLE_REDIRECT_URI
+} = require("../config/config.js");
+const { OAuth2Client } = require("google-auth-library");
 const validation_user = require("../middleware/validationUser.js");
 const cookieOptions = require("../middleware/cookieOptions.js");
 const { hashToken } = require("../middleware/tokenSecurity.js");
 const { enviarCorreoRecuperacion, enviarCodigoVerificacion } = require("../services/email.service.js");
 const UsuarioRol = db.getModel("UsuarioRol");
 class UsuarioController {
+  googleClient() {
+    return new OAuth2Client(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI);
+  }
+
+  googleFailure(res, message) {
+    const redirect = new URL("/login", FRONTEND_URL || "http://localhost:5173");
+    redirect.searchParams.set("google_error", message);
+    return res.redirect(redirect.toString());
+  }
+
+  startGoogleLogin(req, res) {
+    if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REDIRECT_URI) {
+      return res.status(503).json({ ok: false, message: "La autenticación con Google no está configurada." });
+    }
+
+    const state = crypto.randomBytes(32).toString("hex");
+    res.cookie("google_oauth_state", state, {
+      ...cookieOptions,
+      maxAge: 10 * 60 * 1000
+    });
+
+    const authorizationUrl = this.googleClient().generateAuthUrl({
+      access_type: "online",
+      scope: ["openid", "email", "profile"],
+      state,
+      prompt: "select_account"
+    });
+
+    return res.redirect(authorizationUrl);
+  }
+
+  async googleCallback(req, res) {
+    if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REDIRECT_URI) {
+      return this.googleFailure(res, "La autenticación con Google no está configurada.");
+    }
+
+    const { code, state, error } = req.query;
+    const expectedState = req.cookies?.google_oauth_state;
+    res.clearCookie("google_oauth_state", cookieOptions);
+
+    if (error) return this.googleFailure(res, "El acceso con Google fue cancelado.");
+    if (!code || !state || !expectedState || state !== expectedState) {
+      return this.googleFailure(res, "La solicitud de autenticación no es válida.");
+    }
+
+    try {
+      const client = this.googleClient();
+      const { tokens } = await client.getToken(String(code));
+      const ticket = await client.verifyIdToken({
+        idToken: tokens.id_token,
+        audience: GOOGLE_CLIENT_ID
+      });
+      const profile = ticket.getPayload();
+
+      if (!profile?.email || profile.email_verified !== true) {
+        return this.googleFailure(res, "Google no pudo verificar tu correo.");
+      }
+
+      const email = profile.email.trim().toLowerCase();
+      let usuario = await Usuario.findOne({ where: { email } });
+
+      if (!usuario) {
+        const rolEstudiante = await Rol.findOne({ where: { nombre: { [Op.iLike]: "estudiante" } } });
+        if (!rolEstudiante) {
+          return this.googleFailure(res, "El rol por defecto no está configurado.");
+        }
+
+        usuario = Usuario.build({
+          nombre: profile.given_name || profile.name || email.split("@")[0],
+          apellido: profile.family_name || "",
+          email,
+          password: crypto.randomBytes(32).toString("hex"),
+          status: true,
+          emailVerified: true
+        });
+        await usuario.save();
+        await UsuarioRol.create({ usuarioId: usuario.id, rolId: rolEstudiante.id });
+      } else if (!usuario.status || !usuario.emailVerified) {
+        usuario.status = true;
+        usuario.emailVerified = true;
+        await usuario.save();
+      }
+
+      const roles = await usuario.getRoles();
+      await generarTokensYEnviar(usuario, res, roles.map((role) => role.nombre));
+      return res.redirect(new URL("/", FRONTEND_URL || "http://localhost:5173").toString());
+    } catch (err) {
+      console.error("Error en autenticación con Google:", err.message);
+      return this.googleFailure(res, "No se pudo completar el acceso con Google.");
+    }
+  }
+
   createVerificationCode() {
     const code = String(crypto.randomInt(100000, 1000000));
     return {

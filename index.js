@@ -1,12 +1,11 @@
 const express = require('express');
 const cors = require('cors');
-const { PORT, BACKEND_URL, FRONTEND_URL, FRONTEND_URLS } = require('./src/config/config.js');
+const { PORT,FRONTEND_URL} = require('./src/config/config.js');
 const db = require('./src/models');
 const cookieParser = require('cookie-parser');
 const { rateLimiter } = require('./src/middleware/rateLimit.js');
 
 const allowedOrigins = [...new Set([
-  ...(FRONTEND_URLS || '').split(','),
   FRONTEND_URL,
 ].map((origin) => origin?.trim().replace(/\/$/, '')).filter(Boolean))];
 

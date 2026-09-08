@@ -108,8 +108,16 @@ class UsuarioRoutes {
      *             schema: { $ref: '#/components/schemas/ErrorResponse' }
      */
     this.router.post("/login", strictAuthLimiter, (req, res) => {
-      this.controller.login(req, res);
-    });
+       this.controller.login(req, res);
+     });
+
+     this.router.get("/google", (req, res) => {
+       this.controller.startGoogleLogin(req, res);
+     });
+
+     this.router.get("/google/callback", (req, res) => {
+       this.controller.googleCallback(req, res);
+     });
 
     this.router.post("/forgot-password", strictAuthLimiter, (req, res) => {
       this.controller.sendResetPassword(req, res);
