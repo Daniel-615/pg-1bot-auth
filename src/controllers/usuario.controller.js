@@ -81,10 +81,10 @@ class UsuarioController {
       let usuario = await Usuario.findOne({ where: { email } });
 
       if (!usuario) {
-        const rolEstudiante = await Rol.findOne({ where: { nombre: { [Op.iLike]: "estudiante" } } });
-        if (!rolEstudiante) {
-          return this.googleFailure(res, "El rol por defecto no está configurado.");
-        }
+        const [rolEstudiante] = await Rol.findOrCreate({
+          where: { nombre: { [Op.iLike]: "estudiante" } },
+          defaults: { nombre: "estudiante" }
+        });
 
         usuario = Usuario.build({
           nombre: profile.given_name || profile.name || email.split("@")[0],
