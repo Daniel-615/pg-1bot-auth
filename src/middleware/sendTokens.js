@@ -28,6 +28,7 @@ async function generarTokensYEnviar(usuario, res, rolesNombre) {
       email: usuario.email,
       nombre: usuario.nombre,
       apellido: usuario.apellido,
+      edad: usuario.edad,
       rol: rolesNombre,
       permisos: permisosNombre
     },
@@ -41,6 +42,7 @@ async function generarTokensYEnviar(usuario, res, rolesNombre) {
       email: usuario.email,
       nombre: usuario.nombre,
       apellido: usuario.apellido,
+      edad: usuario.edad,
       rol: rolesNombre,
       permisos: permisosNombre
     },

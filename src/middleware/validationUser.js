@@ -71,6 +71,14 @@ class ValidationUser {
     };
   }
 
+  static age(age) {
+    const normalized = Number(age);
+    if (!Number.isInteger(normalized) || normalized < 5 || normalized > 120) {
+      throw new ValidationError("La edad debe ser un número entero entre 5 y 120.");
+    }
+    return normalized;
+  }
+
   static isValidationError(error) {
     return error instanceof ValidationError || error?.name === "ValidationError";
   }

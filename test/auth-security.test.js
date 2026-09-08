@@ -17,6 +17,12 @@ test("acepta contraseñas fuertes", () => {
   assert.equal(ValidationUser.password("Secret123"), "Secret123");
 });
 
+test("valida la edad del usuario", () => {
+  assert.equal(ValidationUser.age("12"), 12);
+  assert.throws(() => ValidationUser.age(4), /entre 5 y 120/);
+  assert.throws(() => ValidationUser.age("12.5"), /entre 5 y 120/);
+});
+
 test("valida credenciales de login sin reglas de registro", () => {
   const credentials = ValidationUser.loginCredentials({
     email: "  USER@Example.COM ",

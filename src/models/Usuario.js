@@ -71,6 +71,11 @@ module.exports = (sequelize) => {
       apellido: {
         type: DataTypes.STRING
       },
+      edad: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        validate: { isInt: true, min: 5, max: 120 }
+      },
       email: {
         type: DataTypes.STRING,
         allowNull: false,
@@ -97,6 +102,24 @@ module.exports = (sequelize) => {
       status: {
         type: DataTypes.BOOLEAN,
         defaultValue: true
+      },
+      emailVerified: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: true
+      },
+      verificationCodeHash: {
+        type: DataTypes.STRING(64),
+        allowNull: true
+      },
+      verificationCodeExpiresAt: {
+        type: DataTypes.DATE,
+        allowNull: true
+      },
+      verificationAttempts: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 0
       },
       id: {
         type: DataTypes.UUID,

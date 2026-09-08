@@ -1,4 +1,5 @@
 const db = require("../models");
+const crypto = require("crypto");
 const Usuario = db.getModel("Usuario");
 const Rol = db.getModel("Rol");
 const Op = db.Sequelize.Op;
@@ -8,8 +9,18 @@ const { SECRET_JWT_KEY, FRONTEND_URL } = require("../config/config.js");
 const validation_user = require("../middleware/validationUser.js");
 const cookieOptions = require("../middleware/cookieOptions.js");
 const { hashToken } = require("../middleware/tokenSecurity.js");
+const { enviarCorreoRecuperacion, enviarCodigoVerificacion } = require("../services/email.service.js");
 const UsuarioRol = db.getModel("UsuarioRol");
 class UsuarioController {
+  createVerificationCode() {
+    const code = String(crypto.randomInt(100000, 1000000));
+    return {
+      code,
+      hash: crypto.createHash("sha256").update(code).digest("hex"),
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000)
+    };
+  }
+
   async verifyRefreshToken(req, res) {
     const token = req.cookies?.refresh_token;
     if (!token) {
@@ -26,6 +37,16 @@ class UsuarioController {
           email: decoded.email,
           refreshToken: hashToken(token),
           status: true
+        },
+        include: {
+          model: Rol,
+          as: 'roles',
+          include: {
+            model: db.getModel('Permiso'),
+            as: 'Permisos',
+            attributes: ['nombre'],
+            through: { attributes: [] }
+          }
         }
       })
       if (!usuario) {
@@ -43,7 +64,10 @@ class UsuarioController {
           "email": usuario.email,
           "rol": decoded.rol,
           "nombre": decoded.nombre,
-          "apellido": decoded.apellido
+          "apellido": decoded.apellido,
+          "edad": usuario.edad,
+          "roles": usuario.roles.map((rol) => ({ id: rol.id, nombre: rol.nombre })),
+          "permisos": [...new Set(usuario.roles.flatMap((rol) => rol.Permisos.map((permiso) => permiso.nombre)))]
         })
     } catch (error) {
       return res
@@ -55,9 +79,9 @@ class UsuarioController {
     }
   }
   async create(req, res) {
-    const { nombre, apellido, email, password, status, rolId } = req.body;
+    const { nombre, apellido, email, password, edad, status, rolId } = req.body;
 
-    if (!nombre || !apellido || !email || !password) {
+    if (!nombre || !apellido || !email || !password || edad === undefined) {
       return res
         .status(400)
         .json({ ok: false, message: "Faltan campos obligatorios." });
@@ -68,6 +92,7 @@ class UsuarioController {
       const nombreValidado = validation_user.userName(nombre);
       const emailValidado = validation_user.email(email);
       const passwordValidado = validation_user.password(password);
+      const edadValidada = validation_user.age(edad);
 
       // Verificar duplicados
       const existingUsername = await Usuario.findOne({ where: { nombre: nombreValidado, apellido } });
@@ -94,14 +119,16 @@ class UsuarioController {
       const nuevoUsuario = Usuario.build();
       nuevoUsuario.Nombre = nombreValidado;
       nuevoUsuario.Apellido = apellido;
+      nuevoUsuario.edad = edadValidada;
       nuevoUsuario.Email = emailValidado;
       nuevoUsuario.Password = passwordValidado;
-      nuevoUsuario.Status = status ?? true;
+      nuevoUsuario.Status = false;
+      nuevoUsuario.emailVerified = false;
 
 
       let rolAsignado;
 
-      if (req.user && req.user.id) {
+       if (req.user && req.user.id) {
         // Usuario autenticado: debe proporcionar rolId
         if (!rolId) {
           return res.status(400).json({
@@ -110,13 +137,19 @@ class UsuarioController {
           });
         }
 
-        const rolIdNumerico = Number(rolId);
+         const rolIdNumerico = Number(rolId);
+         const rolSeleccionado = await Rol.findByPk(rolIdNumerico);
+         const nombreRol = rolSeleccionado?.nombre?.trim().toLowerCase().replace(/\s+/g, "");
 
-        if (rolIdNumerico !== 1) {
-          return res.status(400).send({
-            message: "Solo se permite asignar el rol de empleado"
-          });
-        }
+         if (!rolSeleccionado) {
+           return res.status(400).json({ ok: false, message: "El rol seleccionado no existe." });
+         }
+
+         if (!["empleado", "1botpersonal"].includes(nombreRol)) {
+           return res.status(400).send({
+             message: "Solo se permite asignar los roles empleado o 1botpersonal."
+           });
+         }
 
         rolAsignado = rolIdNumerico;
       } else {
@@ -138,24 +171,18 @@ class UsuarioController {
         rolId: rolAsignado
       });
 
-      const roles = await nuevoUsuario.getRoles({
-        include: [
-          {
-            model: db.getModel("Permiso"),
-            as: "Permisos"
-          }
-        ]
-      });
-      const rolesNombre = roles.map(r => r.nombre);
-
-      // Generar y enviar tokens solo si es registro público
-      if (!req.user) {
-        await generarTokensYEnviar(nuevoUsuario, res, rolesNombre);
-      }
+      const verification = this.createVerificationCode();
+      nuevoUsuario.verificationCodeHash = verification.hash;
+      nuevoUsuario.verificationCodeExpiresAt = verification.expiresAt;
+      nuevoUsuario.verificationAttempts = 0;
+      await nuevoUsuario.save();
+      await enviarCodigoVerificacion(nuevoUsuario.email, verification.code);
 
       return res.status(201).json({
         ok: true,
-        message: "Usuario registrado exitosamente.",
+        message: "Usuario registrado. Revisa tu correo para confirmar la cuenta.",
+        requiresVerification: true,
+        email: nuevoUsuario.email,
       });
 
     } catch (err) {
@@ -373,6 +400,15 @@ class UsuarioController {
       const usuario = await Usuario.findOne({ where: { email, status: true } });
 
       if (!usuario) {
+        const pendingUser = await Usuario.findOne({ where: { email } });
+        if (pendingUser && pendingUser.emailVerified === false) {
+          return res.status(403).json({
+            ok: false,
+            message: "Debes confirmar tu correo antes de iniciar sesión.",
+            requiresVerification: true,
+            email
+          });
+        }
         return res
           .status(401)
           .json({
@@ -413,6 +449,7 @@ class UsuarioController {
             "id": usuario.id,
             "nombre": usuario.nombre,
             "apellido": usuario.apellido,
+            "edad": usuario.edad,
             "rol": rolesNombre
           }
         })
@@ -433,6 +470,64 @@ class UsuarioController {
           ok: false,
           message: "Error al iniciar sesión"
         });
+    }
+  }
+
+  async verifyEmail(req, res) {
+    const email = String(req.body.email || '').trim().toLowerCase();
+    const code = String(req.body.code || '').trim();
+    if (!email || !/^\d{6}$/.test(code)) {
+      return res.status(400).json({ ok: false, message: "Correo y código OTP válido son obligatorios." });
+    }
+
+    try {
+      const usuario = await Usuario.findOne({ where: { email } });
+      if (!usuario || usuario.emailVerified) {
+        return res.status(400).json({ ok: false, message: "El código no es válido o la cuenta ya está confirmada." });
+      }
+      if (usuario.verificationAttempts >= 5) {
+        return res.status(429).json({ ok: false, message: "Demasiados intentos. Solicita un nuevo código." });
+      }
+      if (!usuario.verificationCodeExpiresAt || usuario.verificationCodeExpiresAt.getTime() < Date.now()) {
+        return res.status(400).json({ ok: false, message: "El código expiró. Solicita uno nuevo." });
+      }
+
+      const expected = Buffer.from(usuario.verificationCodeHash || "");
+      const received = crypto.createHash("sha256").update(code).digest("hex");
+      const valid = expected.length === received.length && crypto.timingSafeEqual(expected, Buffer.from(received));
+      if (!valid) {
+        usuario.verificationAttempts += 1;
+        await usuario.save();
+        return res.status(400).json({ ok: false, message: "El código OTP es incorrecto." });
+      }
+
+      usuario.emailVerified = true;
+      usuario.status = true;
+      usuario.verificationCodeHash = null;
+      usuario.verificationCodeExpiresAt = null;
+      usuario.verificationAttempts = 0;
+      await usuario.save();
+      return res.status(200).json({ ok: true, message: "Cuenta confirmada. Ya puedes iniciar sesión." });
+    } catch (err) {
+      return res.status(500).json({ ok: false, message: "No se pudo confirmar la cuenta." });
+    }
+  }
+
+  async resendVerificationCode(req, res) {
+    const email = String(req.body.email || '').trim().toLowerCase();
+    if (!email) return res.status(400).json({ ok: false, message: "El correo electrónico es obligatorio." });
+    try {
+      const usuario = await Usuario.findOne({ where: { email } });
+      if (!usuario || usuario.emailVerified) return res.status(200).json({ ok: true, message: "Si la cuenta necesita confirmación, recibirás un nuevo código." });
+      const verification = this.createVerificationCode();
+      usuario.verificationCodeHash = verification.hash;
+      usuario.verificationCodeExpiresAt = verification.expiresAt;
+      usuario.verificationAttempts = 0;
+      await usuario.save();
+      await enviarCodigoVerificacion(usuario.email, verification.code);
+      return res.status(200).json({ ok: true, message: "Se envió un nuevo código." });
+    } catch (err) {
+      return res.status(500).json({ ok: false, message: "No se pudo enviar un nuevo código." });
     }
   }
   // Actualizar un usuario
@@ -612,22 +707,24 @@ class UsuarioController {
         return res.status(404).send({ message: "Usuario no encontrado o token inválido." });
       }
 
-      usuario.Password = newPassword; // Utiliza el setter para actualizar la contraseña
+      usuario.Password = validation_user.password(newPassword);
       usuario.resetToken = null; // Limpiar el token de restablecimiento
       await usuario.save();
 
-      res.send({ message: "Contraseña restablecida exitosamente." });
+      return res.send({ ok: true, message: "Contraseña restablecida exitosamente." });
     } catch (err) {
       console.error(`Error al restablecer la contraseña: ${err.message}`);
-      res.status(500).send({ message: "Error al restablecer la contraseña." });
+      return res.status(err.name === 'TokenExpiredError' || err.name === 'ValidationError' ? 400 : 500).send({ ok: false, message: err.name === 'ValidationError' ? err.message : "El enlace de recuperación no es válido o expiró." });
     }
   }
   async sendResetPassword(req, res) {
-    const { email } = req.body;
+    const email = String(req.body.email || '').trim().toLowerCase();
+    const genericResponse = { ok: true, message: "Si el correo está registrado, recibirás instrucciones para restablecer tu contraseña." };
+    if (!email) return res.status(400).json({ ok: false, message: "El correo electrónico es obligatorio." });
     try {
       const usuario = await Usuario.findOne({ where: { email, status: true } })
       if (!usuario) {
-        return res.status(404).send({ message: "Correo no encontrado." });
+        return res.status(200).send(genericResponse);
       }
       //Generar token de recuperación
       const resetToken = jwt.sign(
@@ -635,13 +732,11 @@ class UsuarioController {
         SECRET_JWT_KEY,
         { expiresIn: "15m" } // Expira en 15 minutos
       )
+      //Enviar correo de recuperación
+      await enviarCorreoRecuperacion(email, resetToken);
       usuario.resetToken = resetToken;
       await usuario.save();
-      //Enviar correo de recuperación
-      await enviarCorreoRecuperacion(email, resetToken)
-      res.status(200).send({
-        message: "Correo enviado para restablecer contraseña."
-      })
+      return res.status(200).send(genericResponse);
     } catch (err) {
       console.error(`Error al enviar correo de recuperación: ${err.message}`);
       res.status(500).send({

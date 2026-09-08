@@ -47,11 +47,12 @@ class UsuarioRoutes {
      *         password: "secret123"
      *     RegisterInput:
      *       type: object
-     *       required: [nombre, email, password]
+     *       required: [nombre, apellido, email, password, edad]
      *       properties:
      *         nombre: { type: string }
      *         email: { type: string, format: email }
-     *         password: { type: string, format: password }
+      *         password: { type: string, format: password }
+     *         edad: { type: integer, minimum: 5, maximum: 120 }
      *     UpdateUsuarioInput:
      *       type: object
      *       properties:
@@ -109,6 +110,22 @@ class UsuarioRoutes {
     this.router.post("/login", strictAuthLimiter, (req, res) => {
       this.controller.login(req, res);
     });
+
+    this.router.post("/forgot-password", strictAuthLimiter, (req, res) => {
+      this.controller.sendResetPassword(req, res);
+    });
+
+     this.router.post("/reset-password", strictAuthLimiter, (req, res) => {
+       this.controller.resetPassword(req, res);
+     });
+
+     this.router.post("/verify-email", strictAuthLimiter, (req, res) => {
+       this.controller.verifyEmail(req, res);
+     });
+
+     this.router.post("/resend-verification", strictAuthLimiter, (req, res) => {
+       this.controller.resendVerificationCode(req, res);
+     });
 
     /**
      * @openapi
