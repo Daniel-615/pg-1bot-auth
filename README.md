@@ -25,3 +25,13 @@ PORT=
 
 #JWT CONFIGURATION
 SECRET_JWT_KEY=
+
+# Protección de tráfico
+TRUST_PROXY=false
+
+La API aplica un límite global de 120 solicitudes por IP/minuto, límites más estrictos
+para autenticación y un body máximo de 100 KB. En producción, `TRUST_PROXY=true` solo
+debe usarse cuando la API está detrás de un proxy inverso/CDN controlado por ti.
+Para ataques volumétricos (DDoS de red), publica la API detrás de un WAF/CDN como
+Cloudflare, AWS WAF/Shield o el servicio equivalente de tu proveedor; el limitador
+en Node no puede absorber por sí solo un ataque que sature la red o el balanceador.

@@ -3,6 +3,7 @@ const cors = require('cors');
 const { PORT, BACKEND_URL, FRONTEND_URL } = require('./src/config/config.js');
 const db = require('./src/models');
 const cookieParser = require('cookie-parser');
+const { rateLimiter } = require('./src/middleware/rateLimit.js');
 
 
 const swaggerJsdoc = require('swagger-jsdoc');
@@ -19,8 +20,10 @@ class Server {
     this.app = express();
     this.port = PORT;
 
+    // Solo confiar en X-Forwarded-For cuando el despliegue está detrás de un proxy conocido.
+    this.app.set('trust proxy', process.env.TRUST_PROXY === 'true');
+
     this.app.use(cookieParser());
-    this.app.use(express.json());
 
     this.configureMiddlewares();
     this.configureOpenAPI();
@@ -29,6 +32,9 @@ class Server {
   }
 
   configureMiddlewares() {
+    // Límite global para evitar que una sola IP consuma todos los workers.
+    this.app.use(rateLimiter({ windowMs: 60 * 1000, max: 120 }));
+
     this.app.use(cors({
       origin: [
         FRONTEND_URL,
@@ -38,7 +44,9 @@ class Server {
       allowedHeaders: ["Content-Type", "Authorization"],
       exposedHeaders: ["Set-Cookie"]
     }));
-    this.app.use(express.urlencoded({ extended: true }));
+
+    this.app.use(express.json({ limit: '100kb' }));
+    this.app.use(express.urlencoded({ extended: true, limit: '100kb' }));
   }
 
   configureOpenAPI() {
@@ -83,7 +91,6 @@ class Server {
       res.json({ message: 'Auth API funcionando' });
     });
 
-    // Los navegadores solicitan este recurso automáticamente al abrir la URL base.
     this.app.get('/favicon.ico', (_req, res) => res.status(204).end());
 
     new UsuarioRoutes(this.app);
@@ -106,10 +113,14 @@ class Server {
   }
 
   start() {
-    this.app.listen(this.port, () => {
+    const server = this.app.listen(this.port, () => {
       console.log(`Servidor corriendo en el puerto ${this.port}`);
       console.log(`Docs: http://localhost:${this.port}/docs`);
     });
+
+    server.requestTimeout = 30 * 1000;
+    server.headersTimeout = 15 * 1000;
+    server.keepAliveTimeout = 5 * 1000;
   }
 }
 
