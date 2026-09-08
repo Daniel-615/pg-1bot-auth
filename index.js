@@ -1,6 +1,5 @@
 const express = require('express');
 const cors = require('cors');
-const bodyParser = require('body-parser');
 const { PORT, BACKEND_URL, FRONTEND_URL } = require('./src/config/config.js');
 const db = require('./src/models');
 const cookieParser = require('cookie-parser');
@@ -39,8 +38,7 @@ class Server {
       allowedHeaders: ["Content-Type", "Authorization"],
       exposedHeaders: ["Set-Cookie"]
     }));
-    this.app.use(bodyParser.json());
-    this.app.use(bodyParser.urlencoded({ extended: true }));
+    this.app.use(express.urlencoded({ extended: true }));
   }
 
   configureOpenAPI() {
