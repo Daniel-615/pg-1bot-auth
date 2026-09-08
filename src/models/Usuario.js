@@ -131,7 +131,8 @@ module.exports = (sequelize) => {
         allowNull: true
       },
       resetToken: {
-        type: DataTypes.STRING,
+        // Los JWT pueden superar los 255 caracteres si el correo es largo.
+        type: DataTypes.TEXT,
         allowNull: true
       }
     },

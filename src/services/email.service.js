@@ -11,7 +11,7 @@ async function sendWithResend({ to, subject, text, html }) {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      from: process.env.MAIL_FROM || process.env.RESEND_FROM,
+      from: process.env.RESEND_FROM,
       to: [to],
       subject,
       text,
@@ -23,6 +23,14 @@ async function sendWithResend({ to, subject, text, html }) {
     const details = await response.text();
     throw new Error(`Resend rechazó el correo (${response.status}): ${details}`);
   }
+
+  const result = await response.json();
+  if (!result.id) {
+    throw new Error('Resend aceptó la petición, pero no devolvió un ID de correo.');
+  }
+
+  console.info(`Correo aceptado por Resend: ${result.id}`);
+  return result;
 }
 
 function getTransporter() {

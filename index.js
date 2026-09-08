@@ -1,9 +1,14 @@
 const express = require('express');
 const cors = require('cors');
-const { PORT, BACKEND_URL, FRONTEND_URL } = require('./src/config/config.js');
+const { PORT, BACKEND_URL, FRONTEND_URL, FRONTEND_URLS } = require('./src/config/config.js');
 const db = require('./src/models');
 const cookieParser = require('cookie-parser');
 const { rateLimiter } = require('./src/middleware/rateLimit.js');
+
+const allowedOrigins = [...new Set([
+  ...(FRONTEND_URLS || '').split(','),
+  FRONTEND_URL,
+].map((origin) => origin?.trim().replace(/\/$/, '')).filter(Boolean))];
 
 
 const swaggerJsdoc = require('swagger-jsdoc');
@@ -36,9 +41,7 @@ class Server {
     this.app.use(rateLimiter({ windowMs: 60 * 1000, max: 120 }));
 
     this.app.use(cors({
-      origin: [
-        FRONTEND_URL,
-      ],
+      origin: allowedOrigins,
       credentials: true,
       methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
       allowedHeaders: ["Content-Type", "Authorization"],

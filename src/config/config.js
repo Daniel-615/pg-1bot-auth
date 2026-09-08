@@ -3,7 +3,7 @@ dotenv.config();
 const { PORT } = process.env;
 const {
   HOST, USER, DB_PORT, SECRET_JWT_KEY,
-  FRONTEND_URL, NODE_ENV,
+  FRONTEND_URL, FRONTEND_URLS, NODE_ENV,
   DB_PASSWORD, DB
 
 } = process.env;
@@ -18,5 +18,6 @@ module.exports = {
   SALT_ROUNDS: 10,
   SECRET_JWT_KEY,
   FRONTEND_URL,
+  FRONTEND_URLS,
   NODE_ENV
 };

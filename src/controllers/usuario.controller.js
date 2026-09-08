@@ -701,9 +701,9 @@ class UsuarioController {
     }
     try {
       const decoded = jwt.verify(token, SECRET_JWT_KEY);
-      const usuario = await Usuario.findOne({ where: { id: decoded.id, resetToken: token } });
+      const usuario = await Usuario.findByPk(decoded.id);
 
-      if (!usuario) {
+      if (!usuario || usuario.resetToken !== token) {
         return res.status(404).send({ message: "Usuario no encontrado o token inválido." });
       }
 
