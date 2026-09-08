@@ -62,6 +62,8 @@ async function generarTokensYEnviar(usuario, res, rolesNombre) {
         ...cookieOptions,
         maxAge: 7 * 24 * 60 * 60 * 1000,
       });
+
+    return { accessToken, refreshToken };
   });
 }
 

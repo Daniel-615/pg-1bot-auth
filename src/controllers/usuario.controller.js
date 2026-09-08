@@ -103,8 +103,11 @@ class UsuarioController {
       }
 
       const roles = await usuario.getRoles();
-      await generarTokensYEnviar(usuario, res, roles.map((role) => role.nombre));
-      return res.redirect(new URL("/", FRONTEND_URL || "http://localhost:5173").toString());
+      const { accessToken } = await generarTokensYEnviar(usuario, res, roles.map((role) => role.nombre));
+      const redirect = new URL("/", FRONTEND_URL || "http://localhost:5173");
+      // El fragmento no se envía al servidor ni queda en los logs como un query param.
+      redirect.hash = `access_token=${encodeURIComponent(accessToken)}`;
+      return res.redirect(redirect.toString());
     } catch (err) {
       console.error("Error en autenticación con Google:", err.message);
       return this.googleFailure(res, "No se pudo completar el acceso con Google.");
