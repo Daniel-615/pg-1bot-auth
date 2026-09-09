@@ -139,20 +139,20 @@ class UsuarioController {
   }
 
   async verifyRefreshToken(req, res) {
-    const token = req.cookies?.refresh_token;
-    if (!token) {
-      return res
-        .status(401).send({
-          message: "No se encontró el token de sesión."
-        })
+    // La ruta ya valida el access token con verifyToken. No debemos exigir
+    // aquí el refresh token, porque su única función es renovar la sesión.
+    const authenticatedUserId = req.user?.id;
+    if (!authenticatedUserId) {
+      return res.status(401).json({
+        ok: false,
+        message: "No se encontró el usuario de la sesión."
+      });
     }
+
     try {
-      const decoded = jwt.verify(token, SECRET_JWT_KEY);
       const usuario = await Usuario.findOne({
         where: {
-          id: decoded.id,
-          email: decoded.email,
-          refreshToken: hashToken(token),
+          id: authenticatedUserId,
           status: true
         },
         include: {
@@ -179,9 +179,9 @@ class UsuarioController {
         .send({
           "userId": usuario.id,
           "email": usuario.email,
-          "rol": decoded.rol,
-          "nombre": decoded.nombre,
-          "apellido": decoded.apellido,
+          "rol": req.user.rol,
+          "nombre": usuario.nombre,
+          "apellido": usuario.apellido,
           "edad": usuario.edad,
           "roles": usuario.roles.map((rol) => ({ id: rol.id, nombre: rol.nombre })),
           "permisos": [...new Set(usuario.roles.flatMap((rol) => rol.Permisos.map((permiso) => permiso.nombre)))]
@@ -477,19 +477,30 @@ class UsuarioController {
     const refreshToken = req.cookies.refresh_token;
 
     if (!refreshToken) {
-      return res.status(403).send({ message: "No hay refresh token." });
+      return res
+      .status(403)
+      .json({
+        ok: false,
+        message: "No hay refresh token." 
+      });
     }
 
     try {
       const usuario = await Usuario.findOne({ where: { refreshToken: hashToken(refreshToken) } });
 
       if (!usuario) {
-        return res.status(403).send({ message: "Token inválido o usuario no encontrado." });
+        return res.status(403).json({
+          ok: false,
+          message: "Token inválido o usuario no encontrado."
+        });
       }
 
       jwt.verify(refreshToken, SECRET_JWT_KEY, async (err, decoded) => {
         if (err || usuario.email !== decoded.email) {
-          return res.status(403).send({ message: "Token inválido." });
+          return res.status(403).json({
+            ok: false,
+            message: "Token inválido."
+          });
         }
 
         const newAccessToken = jwt.sign(
@@ -503,7 +514,8 @@ class UsuarioController {
             ...cookieOptions,
             maxAge: 60 * 60 * 1000 // 1 hora de vida
           })
-          .send({
+          .json({
+            ok: true,
             message: "Token renovado exitosamente.",
             success: true,
             userId: usuario.id,
@@ -511,7 +523,12 @@ class UsuarioController {
       });
     } catch (err) {
       console.error("Error al renovar token:", err.message);
-      res.status(500).send({ message: "Error al renovar el token." });
+      return res
+      .status(500)
+      .json({
+        ok: false,
+        message: "Error al renovar el token."
+      });
     }
   }
 
@@ -603,19 +620,30 @@ class UsuarioController {
     const email = String(req.body.email || '').trim().toLowerCase();
     const code = String(req.body.code || '').trim();
     if (!email || !/^\d{6}$/.test(code)) {
-      return res.status(400).json({ ok: false, message: "Correo y código OTP válido son obligatorios." });
+      return res
+      .status(400)
+      .json({ ok: false, message: "Correo y código OTP válido son obligatorios." });
     }
 
     try {
       const usuario = await Usuario.findOne({ where: { email } });
       if (!usuario || usuario.emailVerified) {
-        return res.status(400).json({ ok: false, message: "El código no es válido o la cuenta ya está confirmada." });
-      }
+        return res
+        .status(400)
+        .json({ 
+          ok: false,
+           message: "El código no es válido o la cuenta ya está confirmada." 
+          });
+       }
       if (usuario.verificationAttempts >= 5) {
-        return res.status(429).json({ ok: false, message: "Demasiados intentos. Solicita un nuevo código." });
+        return res
+        .status(429)
+        .json({ ok: false, message: "Demasiados intentos. Solicita un nuevo código." });
       }
       if (!usuario.verificationCodeExpiresAt || usuario.verificationCodeExpiresAt.getTime() < Date.now()) {
-        return res.status(400).json({ ok: false, message: "El código expiró. Solicita uno nuevo." });
+        return res
+        .status(400)
+        .json({ ok: false, message: "El código expiró. Solicita uno nuevo." });
       }
 
       const expected = Buffer.from(usuario.verificationCodeHash || "");
@@ -624,7 +652,9 @@ class UsuarioController {
       if (!valid) {
         usuario.verificationAttempts += 1;
         await usuario.save();
-        return res.status(400).json({ ok: false, message: "El código OTP es incorrecto." });
+        return res
+          .status(400)
+          .json({ ok: false, message: "El código OTP es incorrecto." });
       }
 
       usuario.emailVerified = true;
