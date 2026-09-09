@@ -19,6 +19,11 @@ const { hashToken } = require("../middleware/tokenSecurity.js");
 const { enviarCorreoRecuperacion, enviarCodigoVerificacion } = require("../services/email.service.js");
 const UsuarioRol = db.getModel("UsuarioRol");
 class UsuarioController {
+  maskEmail(email) {
+    const [name, domain] = String(email || "").split("@");
+    return domain ? `${name.slice(0, 2)}***@${domain}` : "sin-correo";
+  }
+
   googleClient() {
     return new OAuth2Client(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI);
   }
@@ -30,7 +35,9 @@ class UsuarioController {
   }
 
   startGoogleLogin(req, res) {
+    console.log(`[AUTH][Google] Inicio OAuth ip=${req.ip} redirect=${GOOGLE_REDIRECT_URI || "no-configurado"}`);
     if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REDIRECT_URI) {
+      console.error("[AUTH][Google] Configuración incompleta de Google OAuth");
       return res.status(503).json({ ok: false, message: "La autenticación con Google no está configurada." });
     }
 
@@ -59,8 +66,13 @@ class UsuarioController {
     const expectedState = req.cookies?.google_oauth_state;
     res.clearCookie("google_oauth_state", cookieOptions);
 
-    if (error) return this.googleFailure(res, "El acceso con Google fue cancelado.");
+    if (error) {
+      console.warn(`[AUTH][Google] Google devolvió error=${String(error)} ip=${req.ip}`);
+      return this.googleFailure(res, "El acceso con Google fue cancelado.");
+    }
+    console.log(`[AUTH][Google] Callback recibido code=${Boolean(code)} state=${Boolean(state)} stateMatch=${Boolean(state && expectedState && state === expectedState)} ip=${req.ip}`);
     if (!code || !state || !expectedState || state !== expectedState) {
+      console.warn("[AUTH][Google] Estado OAuth inválido o ausente");
       return this.googleFailure(res, "La solicitud de autenticación no es válida.");
     }
 
@@ -72,6 +84,8 @@ class UsuarioController {
         audience: GOOGLE_CLIENT_ID
       });
       const profile = ticket.getPayload();
+
+      console.log(`[AUTH][Google] Identidad verificada email=${this.maskEmail(profile?.email)} emailVerified=${profile?.email_verified === true}`);
 
       if (!profile?.email || profile.email_verified !== true) {
         return this.googleFailure(res, "Google no pudo verificar tu correo.");
@@ -104,12 +118,13 @@ class UsuarioController {
 
       const roles = await usuario.getRoles();
       const { accessToken } = await generarTokensYEnviar(usuario, res, roles.map((role) => role.nombre));
+      console.log(`[AUTH][Google] Login exitoso userId=${usuario.id} email=${this.maskEmail(email)}`);
       const redirect = new URL("/", FRONTEND_URL || "http://localhost:5173");
       // El fragmento no se envía al servidor ni queda en los logs como un query param.
       redirect.hash = `access_token=${encodeURIComponent(accessToken)}`;
       return res.redirect(redirect.toString());
     } catch (err) {
-      console.error("Error en autenticación con Google:", err.message);
+      console.error(`[AUTH][Google] Fallo OAuth: ${err.message}`, err.stack);
       return this.googleFailure(res, "No se pudo completar el acceso con Google.");
     }
   }
@@ -503,11 +518,13 @@ class UsuarioController {
   async login(req, res) {
     try {
       const { email, password } = validation_user.loginCredentials(req.body);
+      console.log(`[AUTH] Login con credenciales email=${this.maskEmail(email)} ip=${req.ip}`);
       const usuario = await Usuario.findOne({ where: { email, status: true } });
 
       if (!usuario) {
         const pendingUser = await Usuario.findOne({ where: { email } });
         if (pendingUser && pendingUser.emailVerified === false) {
+          console.warn(`[AUTH] Login rechazado: correo sin verificar email=${this.maskEmail(email)} ip=${req.ip}`);
           return res.status(403).json({
             ok: false,
             message: "Debes confirmar tu correo antes de iniciar sesión.",
@@ -525,6 +542,7 @@ class UsuarioController {
 
       const call = await usuario.isValid(password, usuario.password);
       if (!call) {
+        console.warn(`[AUTH] Login rechazado: credenciales inválidas email=${this.maskEmail(email)} ip=${req.ip}`);
         return res
           .status(401)
           .json({
@@ -545,6 +563,8 @@ class UsuarioController {
       await generarTokensYEnviar(usuario, res, rolesNombre);
 
       await usuario.save();
+
+      console.log(`[AUTH] Login exitoso userId=${usuario.id} email=${this.maskEmail(email)} ip=${req.ip}`);
 
       return res
         .status(200)
@@ -569,7 +589,7 @@ class UsuarioController {
           });
       }
 
-      console.log(`Error al iniciar sesión: ${err.message}`);
+      console.error(`[AUTH] Error en login: ${err.message}`, err.stack);
       return res
         .status(500)
         .json({

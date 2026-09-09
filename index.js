@@ -4,6 +4,7 @@ const { PORT,FRONTEND_URL} = require('./src/config/config.js');
 const db = require('./src/models');
 const cookieParser = require('cookie-parser');
 const { rateLimiter } = require('./src/middleware/rateLimit.js');
+const requestLogger = require('./src/middleware/requestLogger.js');
 
 const allowedOrigins = [...new Set([
   FRONTEND_URL,
@@ -32,10 +33,13 @@ class Server {
     this.configureMiddlewares();
     this.configureOpenAPI();
     this.configureRoutes();
+    this.configureErrorHandling();
     this.connectDatabase();
   }
 
   configureMiddlewares() {
+    this.app.use(requestLogger);
+
     // Límite global para evitar que una sola IP consuma todos los workers.
     this.app.use(rateLimiter({ windowMs: 60 * 1000, max: 120 }));
 
@@ -49,6 +53,14 @@ class Server {
 
     this.app.use(express.json({ limit: '100kb' }));
     this.app.use(express.urlencoded({ extended: true, limit: '100kb' }));
+
+  }
+
+  configureErrorHandling() {
+    this.app.use((err, req, res, _next) => {
+      console.error(`[ERROR] ${req.method} ${req.originalUrl}:`, err.stack || err.message);
+      res.status(err.status || 500).json({ ok: false, message: 'Error interno del servidor.' });
+    });
   }
 
   configureOpenAPI() {
