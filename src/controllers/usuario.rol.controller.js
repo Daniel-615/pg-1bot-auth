@@ -104,7 +104,21 @@ class UsuarioRolController {
         }
 
         try {
-            const relacion = await UsuarioRol.findOne({ where: { usuarioId, rolId } });
+            const relacion = await UsuarioRol.findOne({
+                where: { usuarioId, rolId },
+                include: [
+                    {
+                        model: Usuario,
+                        as: "usuario",
+                        attributes: ["id", "nombre", "email"]
+                    },
+                    {
+                        model: Rol,
+                        as: "rol",
+                        attributes: ["id", "nombre"]
+                    }
+                ]
+            });
             if (!relacion) {
                 return res
                     .status(404)

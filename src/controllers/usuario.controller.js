@@ -332,6 +332,8 @@ class UsuarioController {
         email: u.email,
         status: u.Status,
         rol: u.usuario_roles?.[0]?.rol?.nombre || null,
+        createdAt: u.createdAt,
+        updatedAt: u.updatedAt,
       }));
       if (!usuariosConFullName) {
         return res
@@ -377,7 +379,9 @@ class UsuarioController {
         apellido: u.apellido,
         email: u.email,
         rol: u.usuario_roles?.[0]?.rol?.nombre,
-        estado: u.estado,
+        status: u.status,
+        createdAt: u.createdAt,
+        updatedAt: u.updatedAt,
       }));
       if (!activos) {
         return res
