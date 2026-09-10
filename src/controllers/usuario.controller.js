@@ -518,6 +518,7 @@ class UsuarioController {
             ok: true,
             message: "Token renovado exitosamente.",
             success: true,
+            accessToken: newAccessToken,
             userId: usuario.id,
           });
       });
@@ -577,7 +578,7 @@ class UsuarioController {
       });
       const rolesNombre = roles.map(r => r.nombre);
 
-      await generarTokensYEnviar(usuario, res, rolesNombre);
+      const { accessToken } = await generarTokensYEnviar(usuario, res, rolesNombre);
 
       await usuario.save();
 
@@ -588,6 +589,7 @@ class UsuarioController {
         .json({
           ok: true,
           message: "Inicio de sesión exitoso.",
+          accessToken,
           "user": {
             "id": usuario.id,
             "nombre": usuario.nombre,
