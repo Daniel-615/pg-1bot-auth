@@ -143,7 +143,12 @@ class RolController {
     try {
       const rol = await Rol.findByPk(id);
       if (!rol) {
-        return res.status(404).send({ message: "Rol no encontrado." });
+        return res
+        .status(404)
+        .json({
+            ok: false,
+            message: "Rol no encontrado." 
+          });
       }
 
       rol.Nombre = nombre;

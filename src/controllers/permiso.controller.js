@@ -189,6 +189,14 @@ class PermisoController {
     }
     async delete(req, res) {
         const { id } = req.params;
+        if(!id){
+            return res 
+                .status(400)
+                .json({
+                    ok: false,
+                    message: "Falta 'id' en la url"
+                })
+        }
         try {
             const deleted = await Permiso.destroy({ where: { id } })
             if (deleted === 1) {
