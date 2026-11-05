@@ -119,7 +119,7 @@ class UsuarioController {
       const roles = await usuario.getRoles();
       const { accessToken } = await generarTokensYEnviar(usuario, res, roles.map((role) => role.nombre));
       console.log(`[AUTH][Google] Login exitoso userId=${usuario.id} email=${this.maskEmail(email)}`);
-      const redirect = new URL("/", FRONTEND_URL || "http://localhost:5173");
+      const redirect = new URL("/", FRONTEND_URL);
       // El fragmento no se envía al servidor ni queda en los logs como un query param.
       redirect.hash = `access_token=${encodeURIComponent(accessToken)}`;
       return res.redirect(redirect.toString());
@@ -139,8 +139,6 @@ class UsuarioController {
   }
 
   async verifyRefreshToken(req, res) {
-    // La ruta ya valida el access token con verifyToken. No debemos exigir
-    // aquí el refresh token, porque su única función es renovar la sesión.
     const authenticatedUserId = req.user?.id;
     if (!authenticatedUserId) {
       return res.status(401).json({

@@ -96,12 +96,13 @@ class UsuarioRolRoutes {
      *       500:
      *         description: Error del servidor
      */
-    this.router.post(
-      "/",
-      verifyToken,
-      validateUuidBody(["usuarioId"]),
-      validatePositiveIntegerBody(["rolId"]),
-      this.controller.create.bind(this.controller)
+     this.router.post(
+       "/",
+       verifyToken,
+       checkPermisosDesdeRoles(["asignar_roles"]),
+       validateUuidBody(["usuarioId"]),
+       validatePositiveIntegerBody(["rolId"]),
+       this.controller.create.bind(this.controller)
     );
 
     /**
